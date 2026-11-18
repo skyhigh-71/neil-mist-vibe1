@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Snake</title>
+<style>
+  /* ================= Theme tokens (monochrome green LCD) ================= */
+  :root {
+    --lcd-bg: #c4d7a2;     /* light green backlit background */
+    --lcd-ink: #1f2a17;    /* dark "pixels" */
+    --lcd-edge: #2b3130;   /* black bezel around the screen */
+    --body-top: #8d9399;   /* grey handset shell gradient */
+    --body-mid: #62686e;
+    --body-bot: #474c52;
+    --key-top: #5b6168;    /* keypad gradient */
+    --key-bot: #3a3f45;
+    --key-shadow: #22262a;
+    --key-ink: #e6e9ec;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;                       /* the scaled device always fits, no scrolling */
+    background: radial-gradient(circle at 50% 30%, #2c3238, #101214 70%);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    font-family: "Courier New", Courier, monospace;
+  }
+
+  body { display: flex; align-items: center; justify-content: center; }
+
+  /* Wrapper JS sizes to the scaled handset so the page centres it correctly */
+  #stage { position: relative; }
+
+  /* The handset is designed at 300 x 600 px and scaled to fit the viewport (see fit() in script) */
+  #device {
+    position: absolute; left: 0; top: 0;
+    width: 300px; height: 600px;
+    transform-origin: 0 0;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 28px 26px 26px;
+    border-radius: 44px;
+    background: linear-gradient(160deg, var(--body-top) 0%, var(--body-mid) 45%, var(--body-bot) 100%);
+    box-shadow:
+      inset 0 2px 0 rgba(255,255,255,.3),
+      inset 0 -4px 0 rgba(0,0,0,.35),
+      0 18px 40px rgba(0,0,0,.6);
+  }
+
+  .speaker {
+    width: 90px; height: 8px; border-radius: 4px;
+    background: repeating-linear-gradient(90deg, #2a2e32 0 4px, transparent 4px 8px);
+  }
+
+  /* ---------- LCD screen ---------- */
+  .lcd {
+    width: 100%;
+    margin-top: 16px;
+    background: var(--lcd-bg);
+    border: 6px solid var(--lcd-edge);
+    border-radius: 8px;
+    padding: 6px 8px;
+    box-shadow: inset 0 0 0 2px #9fb37c, inset 0 0 18px rgba(0,0,0,.22);
+  }
+
+  .hud, .lcd-foot {
+    display: flex; justify-content: space-between;
+    height: 16px; line-height: 16px;
+    color: var(--lcd-ink);
+    font-size: 12px; font-weight: bold; letter-spacing: 1px;
+  }
+
+  /* Game area: 220 x 220 px (20 x 20 cells of 11 px) */
+  .field {
+    position: relative;
+    width: 220px; height: 220px;
+    margin: 6px auto;
+    touch-action: none;                     /* stop the browser scrolling/zooming on swipes */
+  }
+
+  canvas {
+    display: block;
+    width: 220px; height: 220px;
+    image-rendering: pixelated;
+  }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 10px; padding: 12px;
+    background: rgba(196, 215, 162, .92);
+    color: var(--lcd-ink);
+    text-align: center;
+  }
+  .overlay[hidden] { display: none; }
+  .ov-title { margin: 0; font-size: 30px; font-weight: 900; letter-spacing: 3px; }
+  .ov-text  { margin: 0; font-size: 13px; font-weight: bold; letter-spacing: 1px; }
+  .ov-sub   { margin: 0; font-size: 12px; font-weight: bold; min-height: 14px; }
+  .blink    { animation: blink 1s steps(1, end) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .ov-btn {
+    margin-top: 6px;
+    padding: 8px 18px;
+    background: transparent;
+    color: var(--lcd-ink);
+    border: 2px solid var(--lcd-ink);
+    font: bold 13px "Courier New", monospace;
+    letter-spacing: 1px;
+    cursor: pointer;
+  }
+  .ov-btn[hidden] { display: none; }
+
+  /* ---------- Keypad ---------- */
+  .keypad {
+    width: 100%;
+    margin-top: auto;                       /* pushes keypad to the bottom of the handset */
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 4px;
+  }
+
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(3, 52px);
+    gap: 6px;
+  }
+
+  .key {
+    display: flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 14px;
+    background: linear-gradient(180deg, var(--key-top), var(--key-bot));
+    color: var(--key-ink);
+    font: bold 18px/1 "Courier New", monospace;
+    box-shadow: 0 5px 0 var(--key-shadow), inset 0 1px 0 rgba(255,255,255,.2);
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  .key:active, .key.pressed {
+    transform: translateY(4px);
+    box-shadow: 0 1px 0 var(--key-shadow), inset 0 1px 0 rgba(255,255,255,.2);
+  }
+  .key:focus-visible { outline: 2px solid #9fd0ff; outline-offset: 2px; }
+
+  .dpad .key[data-dir="up"]    { grid-column: 2; grid-row: 1; }
+  .dpad .key[data-dir="left"]  { grid-column: 1; grid-row: 2; }
+  .dpad .key[data-dir="right"] { grid-column: 3; grid-row: 2; }
+  .dpad .key[data-dir="down"]  { grid-column: 2; grid-row: 3; }
+  .dpad .hub {
+    grid-column: 2; grid-row: 2;
+    border-radius: 50%;
+    background: radial-gradient(circle, #2c3134 0 6px, transparent 7px);
+  }
+
+  .actions { display: flex; flex-direction: column; gap: 12px; }
+  .actions .key {
+    width: 80px; height: 42px;
+    border-radius: 21px;
+    font-size: 12px; letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="device">
+    <div class="speaker"></div>
+
+    <!-- Screen -->
+    <div class="lcd">
+      <div class="hud">
+        <span id="score">SCORE 000</span>
+        <span id="hi">HI 000</span>
+      </div>
+
+      <div class="field" id="field">
+        <canvas id="canvas" width="220" height="220" aria-label="Snake game area"></canvas>
+
+        <!-- Start / pause / game-over messages sit on top of the canvas -->
+        <div class="overlay" id="overlay">
+          <h1 class="ov-title" id="ovTitle">SNAKE</h1>
+          <p class="ov-text" id="ovText">PRESS START</p>
+          <p class="ov-sub" id="ovSub"></p>
+          <button class="ov-btn" id="ovBtn" type="button">START</button>
+        </div>
+      </div>
+
+      <div class="lcd-foot">
+        <span id="speed">SPEED 1</span>
+        <span id="soundState">SOUND ON</span>
+      </div>
+    </div>
+
+    <!-- Keypad -->
+    <div class="keypad">
+      <div class="dpad">
+        <button class="key" data-dir="up"    type="button" aria-label="Up">&#9650;</button>
+        <button class="key" data-dir="left"  type="button" aria-label="Left">&#9664;</button>
+        <div class="hub"></div>
+        <button class="key" data-dir="right" type="button" aria-label="Right">&#9654;</button>
+        <button class="key" data-dir="down"  type="button" aria-label="Down">&#9660;</button>
+      </div>
+
+      <div class="actions">
+        <button class="key" id="startBtn" type="button">START</button>
+        <button class="key" id="pauseBtn" type="button">PAUSE</button>
+        <button class="key" id="muteBtn"  type="button">MUTE</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/*
+ * SNAKE - Nokia-style single-file game
+ * ------------------------------------
+ * Plain HTML/CSS/JS, no external resources, works offline.
+ *  - Grid-based movement on a 20x20 board drawn on a <canvas>.
+ *  - Fixed-step game loop driven by requestAnimationFrame (stopped when not playing).
+ *  - Keyboard (arrows / WASD / Space / Enter / P / M), on-screen keypad and swipes.
+ *  - High score stored in localStorage. Sound via Web Audio API, with mute toggle.
+ */
+(() => {
+  'use strict';
+
+  // ======================= Configuration =======================
+  const COLS = 20, ROWS = 20, CELL = 11;     // board size in cells, pixels per cell
+  const START_LEN = 3;                       // snake length at the start
+  const START_TICK = 200;                    // ms per move at level 1 (slow enough to start)
+  const TICK_STEP = 8;                       // ms faster per speed level
+  const MIN_TICK = 90;                       // sensible maximum speed (ms per move)
+  const POINTS_PER_LEVEL = 5;                // speed goes up every 5 points
+  const SWIPE_MIN = 24;                      // px of movement to count as a swipe
+  const OVER_GUARD_MS = 350;                 // ignore restart input right after game over
+  const HI_KEY = 'snake-nokia-hi';
+  const MUTE_KEY = 'snake-nokia-muted';
+
+  const LCD_BG = '#c4d7a2';                  // must match --lcd-bg in the CSS
+  const LCD_INK = '#1f2a17';                 // must match --lcd-ink in the CSS
+
+  const DIRS = {
+    up:    { x: 0,  y: -1 },
+    down:  { x: 0,  y: 1 },
+    left:  { x: -1, y: 0 },
+    right: { x: 1,  y: 0 },
+  };
+  const KEY_DIRS = {
+    ArrowUp: 'up', w: 'up', W: 'up',
+    ArrowDown: 'down', s: 'down', S: 'down',
+    ArrowLeft: 'left', a: 'left', A: 'left',
+    ArrowRight: 'right', d: 'right', D: 'right',
+  };
+
+  const GAME = { IDLE: 'idle', PLAYING: 'playing', PAUSED: 'paused', OVER: 'over' };
+
+  // ======================= DOM references =======================
+  const $ = (id) => document.getElementById(id);
+  const ui = {
+    stage: $('stage'), device: $('device'), canvas: $('canvas'), field: $('field'),
+    overlay: $('overlay'), ovTitle: $('ovTitle'), ovText: $('ovText'), ovSub: $('ovSub'), ovBtn: $('ovBtn'),
+    score: $('score'), hi: $('hi'), speed: $('speed'), soundState: $('soundState'),
+    startBtn: $('startBtn'), pauseBtn: $('pauseBtn'), muteBtn: $('muteBtn'),
+  };
+  const ctx = ui.canvas.getContext('2d');
+
+  // ======================= State =======================
+  let state = GAME.IDLE;
+  let snake = [];          // array of {x, y}; index 0 is the head
+  let dir = DIRS.right;    // direction applied on the last move
+  let queue = [];          // buffered turns (max 2) so quick key presses are not lost
+  let food = null;         // {x, y}
+  let score = 0;
+  let hi = loadHi();
+  let muted = loadMuted();
+  let newHigh = false;
+  let won = false;
+  let rafId = 0;
+  let lastTs = 0;          // timestamp of the previous animation frame
+  let acc = 0;             // time accumulated towards the next move
+  let overAt = 0;          // when the last game ended (for the restart guard)
+
+  // ======================= Storage helpers (never throw) =======================
+  function storageGet(key) {
+    try { return window.localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function storageSet(key, value) {
+    try { window.localStorage.setItem(key, value); } catch (e) { /* storage blocked: ignore */ }
+  }
+  function loadHi() {
+    const n = parseInt(storageGet(HI_KEY), 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  function loadMuted() {
+    return storageGet(MUTE_KEY) === '1';
+  }
+
+  // ======================= Sound (Web Audio API) =======================
+  let audioCtx = null;
+
+  // Browsers only allow audio after a user gesture, so create/resume it on first input.
+  function ensureAudio() {
+    try {
+      if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        audioCtx = new AC();
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {
+      audioCtx = null;
+    }
+  }
+
+  // Short square-wave beep with a quick fade-out.
+  function beep(freq, dur, when = 0, vol = 0.07) {
+    if (muted || !audioCtx || audioCtx.state !== 'running') return;
+    const t = audioCtx.currentTime + when;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+  const sfxEat = () => beep(880, 0.07);
+  const sfxGameOver = () => { beep(330, 0.14, 0); beep(247, 0.14, 0.15); beep(165, 0.35, 0.30); };
+
+  // ======================= Board logic =======================
+  const level = () => Math.floor(score / POINTS_PER_LEVEL);
+  const tickMs = () => Math.max(MIN_TICK, START_TICK - level() * TICK_STEP);
+
+  // Place food on a random empty cell. Returns false if the board is full.
+  function placeFood() {
+    const taken = new Set(snake.map((p) => p.y * COLS + p.x));
+    const free = [];
+    for (let i = 0; i < COLS * ROWS; i++) {
+      if (!taken.has(i)) free.push(i);
+    }
+    if (free.length === 0) { food = null; return false; }
+    const idx = free[Math.floor(Math.random() * free.length)];
+    food = { x: idx % COLS, y: Math.floor(idx / COLS) };
+    return true;
+  }
+
+  // Reset snake, direction and food to the starting position.
+  function resetBoard() {
+    const midX = Math.floor(COLS / 2), midY = Math.floor(ROWS / 2);
+    snake = [];
+    for (let i = 0; i < START_LEN; i++) snake.push({ x: midX - i, y: midY });
+    dir = DIRS.right;
+    queue = [];
+    placeFood();
+  }
+
+  // Queue a direction change. Ignores reversals and repeats of the current heading.
+  function turn(name) {
+    if (state !== GAME.PLAYING) return;
+    const next = DIRS[name];
+    if (!next) return;
+    const last = queue.length ? queue[queue.length - 1] : dir;
+    if (next.x === last.x && next.y === last.y) return;     // same direction
+    if (next.x === -last.x && next.y === -last.y) return;   // would reverse into the body
+    if (queue.length < 2) queue.push(next);
+  }
+
+  // Advance the snake by one cell.
+  function step() {
+    if (queue.length) dir = queue.shift();
+
+    const head = snake[0];
+    const nx = head.x + dir.x;
+    const ny = head.y + dir.y;
+    const eating = food && nx === food.x && ny === food.y;
+
+    // When not eating, the tail moves away this tick, so it is safe to move into it.
+    const body = eating ? snake : snake.slice(0, -1);
+    const hitWall = nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS;
+    const hitSelf = body.some((p) => p.x === nx && p.y === ny);
+    if (hitWall || hitSelf) { endGame(false); return; }
+
+    snake.unshift({ x: nx, y: ny });
+    if (eating) {
+      score++;
+      sfxEat();
+      updateHud();
+      if (!placeFood()) { endGame(true); }   // board completely filled
+    } else {
+      snake.pop();
+    }
+  }
+
+  // ======================= Game flow =======================
+  function startGame() {
+    ensureAudio();
+    cancelAnimationFrame(rafId);
+    resetBoard();
+    score = 0;
+    newHigh = false;
+    won = false;
+    state = GAME.PLAYING;
+    lastTs = 0;
+    acc = 0;
+    hideOverlay();
+    updateHud();
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function endGame(didWin) {
+    state = GAME.OVER;
+    won = didWin;
+    cancelAnimationFrame(rafId);            // stop the loop
+    rafId = 0;
+    overAt = performance.now();
+    newHigh = score > 0 && score > hi;
+    if (newHigh) {
+      hi = score;
+      storageSet(HI_KEY, String(hi));
+    }
+    sfxGameOver();
+    updateHud();
+    render();
+    showOverlay({
+      title: won ? 'YOU WIN!' : 'GAME OVER',
+      text: 'SCORE: ' + score,
+      sub: newHigh ? 'NEW HIGH SCORE!' : 'HIGH SCORE: ' + hi,
+      btn: 'RESTART',
+    });
+  }
+
+  function pauseGame() {
+    if (state !== GAME.PLAYING) return;
+    state = GAME.PAUSED;
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+    render();
+    showOverlay({ title: 'PAUSED', text: 'PRESS P TO RESUME', sub: '', btn: 'RESUME' });
+  }
+
+  function resumeGame() {
+    if (state !== GAME.PAUSED) return;
+    state = GAME.PLAYING;
+    lastTs = 0;
+    acc = 0;
+    hideOverlay();
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function togglePause() {
+    if (state === GAME.PLAYING) pauseGame();
+    else if (state === GAME.PAUSED) resumeGame();
+  }
+
+  // Used by the START key, the overlay button and tap: start, restart or resume.
+  function primaryAction() {
+    if (state === GAME.IDLE) startGame();
+    else if (state === GAME.OVER) {
+      if (performance.now() - overAt > OVER_GUARD_MS) startGame();
+    } else if (state === GAME.PAUSED) resumeGame();
+  }
+
+  function toggleMute() {
+    muted = !muted;
+    storageSet(MUTE_KEY, muted ? '1' : '0');
+    updateHud();
+  }
+
+  // ======================= Main loop =======================
+  // Fixed-step loop: accumulate real time and perform as many moves as are due.
+  function frame(ts) {
+    if (state !== GAME.PLAYING) { rafId = 0; return; }
+    if (!lastTs) lastTs = ts;
+    acc += Math.min(ts - lastTs, 250);      // clamp so a backgrounded tab does not burst moves
+    lastTs = ts;
+
+    while (state === GAME.PLAYING && acc >= tickMs()) {
+      acc -= tickMs();
+      step();
+    }
+
+    render(ts);
+    // Keep looping only while the game is running; otherwise the loop has stopped.
+    rafId = state === GAME.PLAYING ? requestAnimationFrame(frame) : 0;
+  }
+
+  // ======================= Rendering =======================
+  // Draws one square "pixel block" at board cell (x, y), inset by `inset` pixels.
+  function drawBlock(x, y, inset) {
+    ctx.fillRect(x * CELL + inset, y * CELL + inset, CELL - inset * 2, CELL - inset * 2);
+  }
+
+  function render(ts = performance.now()) {
+    ctx.fillStyle = LCD_BG;
+    ctx.fillRect(0, 0, COLS * CELL, ROWS * CELL);
+    ctx.fillStyle = LCD_INK;
+
+    // Food: a small square that blinks while the game is running
+    if (food && (state !== GAME.PLAYING || Math.floor(ts / 200) % 2 === 0)) {
+      drawBlock(food.x, food.y, 3);
+    }
+
+    // Snake: solid head, slightly smaller body blocks with a 1px gap
+    snake.forEach((p, i) => drawBlock(p.x, p.y, i === 0 ? 0 : 1));
+  }
+
+  function pad3(n) { return String(n).padStart(3, '0'); }
+
+  function updateHud() {
+    ui.score.textContent = 'SCORE ' + pad3(score);
+    ui.hi.textContent = 'HI ' + pad3(hi);
+    ui.speed.textContent = 'SPEED ' + (level() + 1);
+    ui.soundState.textContent = muted ? 'SOUND OFF' : 'SOUND ON';
+    ui.muteBtn.textContent = muted ? 'UNMUTE' : 'MUTE';
+  }
+
+  // Show the overlay with a title, text, sub-line and optional button.
+  function showOverlay({ title, text, sub = '', btn = '', blink = false }) {
+    ui.ovTitle.textContent = title;
+    ui.ovText.textContent = text;
+    ui.ovText.classList.toggle('blink', blink);
+    ui.ovSub.textContent = sub;
+    ui.ovBtn.hidden = !btn;
+    ui.ovBtn.textContent = btn;
+    ui.overlay.hidden = false;
+  }
+
+  function hideOverlay() {
+    ui.overlay.hidden = true;
+  }
+
+  function showIdleScreen() {
+    showOverlay({
+      title: 'SNAKE',
+      text: 'PRESS START',
+      sub: 'ARROWS / WASD TO MOVE',
+      btn: 'START',
+      blink: true,
+    });
+  }
+
+  // ======================= Input =======================
+  // Keyboard
+  document.addEventListener('keydown', (e) => {
+    ensureAudio();
+    const key = e.key;
+
+    if (KEY_DIRS[key]) {
+      e.preventDefault();                   // stop arrows/space from scrolling
+      turn(KEY_DIRS[key]);
+      return;
+    }
+    if (key === ' ' || key === 'Enter') {
+      e.preventDefault();                   // also stops a focused button from being clicked twice
+      if (!e.repeat) {
+        if (state === GAME.PLAYING) return;
+        primaryAction();
+      }
+      return;
+    }
+    if (key === 'p' || key === 'P') { e.preventDefault(); togglePause(); return; }
+    if (key === 'm' || key === 'M') { toggleMute(); }
+  });
+
+  // Stop Space/Enter from triggering button clicks on keyup as well
+  document.addEventListener('keyup', (e) => {
+    if (e.key === ' ' || e.key === 'Enter') e.preventDefault();
+  });
+
+  // On-screen directional keys: respond on press for fast thumb response
+  document.querySelectorAll('.key[data-dir]').forEach((btn) => {
+    const release = () => btn.classList.remove('pressed');
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      ensureAudio();
+      btn.classList.add('pressed');
+      turn(btn.dataset.dir);
+    });
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointerleave', release);
+    btn.addEventListener('pointercancel', release);
+  });
+
+  // Action buttons
+  ui.startBtn.addEventListener('click', () => { ensureAudio(); primaryAction(); });
+  ui.pauseBtn.addEventListener('click', () => { ensureAudio(); togglePause(); });
+  ui.muteBtn.addEventListener('click', () => { ensureAudio(); toggleMute(); });
+  ui.ovBtn.addEventListener('click', () => { ensureAudio(); primaryAction(); });
+
+  // Swipes (and taps to start) on the game area
+  let touchStart = null;
+  ui.field.addEventListener('touchstart', (e) => {
+    const t = e.changedTouches[0];
+    touchStart = { x: t.clientX, y: t.clientY };
+    ensureAudio();
+  }, { passive: true });
+
+  ui.field.addEventListener('touchend', (e) => {
+    if (!touchStart) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.x;
+    const dy = t.clientY - touchStart.y;
+    touchStart = null;
+    const ax = Math.abs(dx), ay = Math.abs(dy);
+    if (Math.max(ax, ay) < SWIPE_MIN) {
+      // A tap (not a swipe) starts/restarts when a menu is showing
+      if (state !== GAME.PLAYING) primaryAction();
+      return;
+    }
+    if (ax > ay) turn(dx > 0 ? 'right' : 'left');
+    else turn(dy > 0 ? 'down' : 'up');
+  }, { passive: true });
+
+  // Pause automatically when the tab is hidden
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state === GAME.PLAYING) pauseGame();
+  });
+
+  // ======================= Fit to screen =======================
+  // The handset is 300x600 px; scale it so the whole thing fits the viewport.
+  function fit() {
+    const W = 300, H = 600, GUTTER = 16;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const s = Math.min((vw - GUTTER) / W, (vh - GUTTER) / H, 2.5);
+    ui.stage.style.width = W * s + 'px';
+    ui.stage.style.height = H * s + 'px';
+    ui.device.style.transform = 'scale(' + s + ')';
+  }
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', fit);
+
+  // ======================= Init =======================
+  muted = loadMuted();
+  fit();
+  resetBoard();
+  updateHud();
+  render();
+  showIdleScreen();
+})();
+</script>
+</body>
+</html>
