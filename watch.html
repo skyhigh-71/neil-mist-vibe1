@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Watch | Trail Frames</title>
+  <meta name="description" content="Video reel and photo gallery from the trails.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="index.html">Trail<i>/</i>Frames</a>
+    <button class="menu-btn" aria-expanded="false" aria-controls="site-nav">Menu</button>
+    <nav id="site-nav" aria-label="Main">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="watch.html" aria-current="page">Watch</a></li>
+        <li><a href="gear.html">Gear</a></li>
+        <li><a href="filming.html">Film</a></li>
+        <li><a href="editing.html">Edit</a></li>
+        <li><a href="growth.html">Grow</a></li>
+        <li><a href="safety.html">Safety</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<section class="page-head" style="background-image:url(media/banners/watch.jpg),url(topo.svg)">
+  <div class="wrap">
+    <h1>The <em>reel</em></h1>
+    <p>Clips and stills from the trail. Hit play, then go make your own.</p>
+  </div>
+</section>
+
+<section class="block">
+  <div class="wrap">
+    <span class="label">Video</span>
+    <div class="reel" data-videos></div>
+  </div>
+</section>
+
+<section class="block" style="padding-top:0">
+  <div class="wrap">
+    <span class="label">Photo</span>
+    <div class="gallery" data-photos></div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap">
+    <span>&copy; Trail Frames. Shoot safe.</span>
+    <span>Want to film like this? <a href="filming.html">Start here</a>.</span>
+  </div>
+</footer>
+<script src="media.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
